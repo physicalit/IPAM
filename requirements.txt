@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+Jinja2
+SQLAlchemy
+apscheduler
+bcrypt
+python-nmap
+ping3
+python-multipart
+httpx
+itsdangerous

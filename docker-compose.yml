@@ -1,0 +1,13 @@
+version: '3'
+services:
+  ipam:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./ipam.db
+      - SCAN_ICMP_INTERVAL_SECONDS=60
+      - SCAN_NMAP_INTERVAL_MINUTES=60
+      - NMAP_ARGS=-Pn -T3 --top-1000-ports -sS -sV
+    volumes:
+      - .:/app
