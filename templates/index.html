@@ -1,16 +1,124 @@
 {% extends 'base.html' %}
 {% block content %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<h2>Subnets</h2>
+<table class="table table-striped">
+  <thead>
+    <tr><th>CIDR</th><th>Name</th><th>Hosts</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+  {% for subnet in subnets or [] %}
+    <tr>
+      <td>{{ subnet.cidr }}</td>
+      <td>
+        <span class="js-subnet-name" data-id="{{ subnet.id }}">{{ subnet.name }}</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary ms-2 js-edit-subnet" data-id="{{ subnet.id }}" title="Edit name" aria-label="Edit name">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-9.5 9.5a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l9.5-9.5zM11.207 2 14 4.793 12.5 6.293 9.707 3.5 11.207 2zM8.5 4.707 11.293 7.5 4 14.793V12h-2.793L8.5 4.707z"/></svg>
+        </button>
+        <form method="post" action="/subnets/{{ subnet.id }}/rename" class="d-none mt-2 js-subnet-edit" data-id="{{ subnet.id }}">
+          <div class="input-group input-group-sm" style="max-width: 420px;">
+            <input class="form-control" name="name" value="{{ subnet.name }}" required>
+            <button class="btn btn-success" type="submit" title="Save" aria-label="Save">
+              ✓
+            </button>
+            <button class="btn btn-outline-secondary js-cancel-edit-subnet" type="button" data-id="{{ subnet.id }}" title="Cancel" aria-label="Cancel">×</button>
+          </div>
+        </form>
+      </td>
+      <td>{{ subnet.hosts|length }}</td>
+      <td>
+        <div class="d-flex gap-2">
+          <form method="post" action="/subnets/{{ subnet.id }}/scan">
+            <button class="btn btn-sm btn-outline-primary" title="Scan now" aria-label="Scan now">Scan</button>
+          </form>
+          <form method="post" action="/subnets/{{ subnet.id }}/delete" onsubmit="return confirm('Delete this subnet? Hosts will be detached.');">
+            <button class="btn btn-sm btn-outline-danger" title="Delete subnet" aria-label="Delete subnet">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V6H6v7.5a.5.5 0 0 1-1 0v-8z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1 0-2H5h6h2.5a1 1 0 0 1 1 1zM5 4v9h6V4H5zM4.118 2 4 2.059V2h8v.059L11.882 2H4.118z"/></svg>
+            </button>
+          </form>
+        </div>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+  {% if not subnets or subnets|length == 0 %}
+  <tfoot>
+    <tr><td colspan="3" class="text-muted">No subnets yet</td></tr>
+  </tfoot>
+  {% endif %}
+</table>
+
+<!-- Controls between Subnets and Hosts -->
+<div class="container-fluid p-0 mb-4">
+  <div class="row g-3 align-items-end">
+    <!-- Add Subnet -->
+    <div class="col-md-8">
+      <form method="post" action="/subnets" class="row g-2">
+        <div class="col-md-5">
+          <input class="form-control" name="cidr" placeholder="CIDR (e.g., 10.0.0.0/24)" required>
+        </div>
+        <div class="col-md-5">
+          <input class="form-control" name="name" placeholder="Name" required>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button class="btn btn-primary" type="submit">Add Subnet</button>
+        </div>
+      </form>
+      <div class="form-text">CIDR is validated and deduplicated.</div>
+    </div>
+    <!-- Add Reservation -->
+    <div class="col-md-4">
+      <form method="post" action="/hosts" class="row g-2">
+        <div class="col">
+          <input class="form-control" name="ip" placeholder="Reserve IP (e.g., 10.0.0.10)" required>
+        </div>
+        <div class="col-auto d-grid">
+          <button class="btn btn-primary" type="submit">Add Reservation</button>
+        </div>
+      </form>
+      <div class="form-text mt-1">Reservations auto-link to the most specific matching subnet.</div>
+    </div>
+  </div>
+  
+</div>
+
 <h2>Hosts</h2>
 <table class="table table-striped">
   <thead>
-    <tr><th>IP</th><th>Hostname</th><th>Status</th><th>Latency ms</th></tr>
+    <tr><th>IP</th><th>Hostname</th><th>MAC</th><th>Status</th><th>Latency ms</th><th>Flags</th><th>Actions</th></tr>
   </thead>
   <tbody>
   {% for host in hosts %}
     {% set last = host.statuses[0] if host.statuses else None %}
     <tr>
-      <td>{{ host.ip }}</td>
-      <td>{{ host.hostname or '' }}</td>
+      <td>
+        {% set tip = port_summaries.get(host.id) if port_summaries else None %}
+        {% if tip %}
+          <span data-bs-toggle="tooltip" data-bs-placement="top" title="{{ tip }}">{{ host.ip }}</span>
+        {% else %}
+          {{ host.ip }}
+        {% endif %}
+      </td>
+      <td>
+        {% if host.hostname %}
+          {{ host.hostname }}
+        {% else %}
+          <form method="post" action="/hosts/{{ host.id }}/hostname" class="d-flex gap-2">
+            <input class="form-control form-control-sm" name="hostname" placeholder="Set hostname" required>
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Save</button>
+          </form>
+        {% endif %}
+      </td>
+      <td>
+        {% if host.mac %}
+          <span class="fw-semibold fs-5 font-monospace">{{ host.mac }}</span>
+        {% else %}
+          <span class="text-muted">—</span>
+        {% endif %}
+      </td>
       <td>
         {% if last %}
           {% if last.is_up %}
@@ -23,23 +131,39 @@
         {% endif %}
       </td>
       <td>{{ '%.1f'|format(last.latency_ms) if last and last.latency_ms else '' }}</td>
+      <td class="text-end">
+        {% if host.tags_json and 'reserved' in host.tags_json %}
+          <span class="badge bg-info text-dark" data-flag="reserved">R</span>
+        {% endif %}
+        {% if port_summaries and port_summaries.get(host.id) %}
+          <span class="badge bg-warning text-dark ms-1" data-flag="ports">P</span>
+        {% endif %}
+      </td>
+      <td class="text-end">
+        <div class="d-flex justify-content-end align-items-center gap-1 flex-wrap">
+          <!-- Scan ports: always visible -->
+          <form method="post" action="/hosts/{{ host.id }}/scan_ports" class="d-inline" title="Scan ports" aria-label="Scan ports">
+            <button class="btn btn-sm btn-outline-info p-0 px-1" type="submit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M10.442 10.442a1 1 0 0 1 1.415 0l3.9 3.9a1 1 0 0 1-1.414 1.415l-3.9-3.9a1 1 0 0 1 0-1.415z"/><path d="M6.5 12a5.5 5.5 0 1 1 0-11 5.5 5.5 0 0 1 0 11zm0-1A4.5 4.5 0 1 0 6.5 2a4.5 4.5 0 0 0 0 9z"/></svg>
+            </button>
+          </form>
+
+          <!-- Clear Name: always visible but disabled when no hostname -->
+          <form method="post" action="/hosts/{{ host.id }}/hostname/clear" class="d-inline" title="Clear hostname" aria-label="Clear hostname">
+            <button class="btn btn-sm btn-outline-secondary" {% if not host.hostname %}disabled aria-disabled="true"{% endif %}>Clear Name</button>
+          </form>
+
+          <!-- Unreserve: always visible but disabled when not reserved -->
+          <form method="post" action="/hosts/{{ host.id }}/unreserve" class="d-inline" title="Unreserve" aria-label="Unreserve">
+            {% set is_reserved = (host.tags_json and 'reserved' in host.tags_json) %}
+            <button class="btn btn-sm btn-outline-danger" {% if not is_reserved %}disabled aria-disabled="true"{% endif %}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V6H6v7.5a.5.5 0 0 1-1 0v-8z"/><path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1 0-2H5h6h2.5a1 1 0 0 1 1 1zM5 4v9h6V4H5zM4.118 2 4 2.059V2h8v.059L11.882 2H4.118z"/></svg>
+            </button>
+          </form>
+        </div>
+      </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
-<h3>Add Host</h3>
-<form method="post" action="/hosts">
-  <div class="row g-2">
-    <div class="col-auto"><input class="form-control" name="ip" placeholder="IP"></div>
-    <div class="col-auto"><button class="btn btn-primary" type="submit">Add</button></div>
-  </div>
-</form>
-<h3 class="mt-4">Add Subnet</h3>
-<form method="post" action="/subnets">
-  <div class="row g-2">
-    <div class="col-auto"><input class="form-control" name="cidr" placeholder="CIDR"></div>
-    <div class="col-auto"><input class="form-control" name="name" placeholder="Name"></div>
-    <div class="col-auto"><button class="btn btn-secondary" type="submit">Add</button></div>
-  </div>
-</form>
 {% endblock %}

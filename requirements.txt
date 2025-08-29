@@ -9,3 +9,4 @@ ping3
 python-multipart
 httpx
 itsdangerous
+psycopg2-binary

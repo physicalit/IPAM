@@ -30,6 +30,7 @@ class Host(Base):
     id = Column(Integer, primary_key=True, index=True)
     ip = Column(String, unique=True, nullable=False)
     subnet_id = Column(Integer, ForeignKey("subnet.id"))
+    mac = Column(String, nullable=True)
     hostname = Column(String, nullable=True)
     description = Column(String, nullable=True)
     tags_json = Column(String, nullable=True)

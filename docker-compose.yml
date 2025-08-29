@@ -1,13 +1,35 @@
-version: '3'
+version: '3.8'
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=ipam
+      - POSTGRES_PASSWORD=ipam
+      - POSTGRES_DB=ipam
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ipam -d ipam"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   ipam:
     build: .
     ports:
       - "8000:8000"
+    cap_add:
+      - NET_RAW
     environment:
-      - DATABASE_URL=sqlite:///./ipam.db
+      - DATABASE_URL=postgresql+psycopg2://ipam:ipam@db:5432/ipam
       - SCAN_ICMP_INTERVAL_SECONDS=60
-      - SCAN_NMAP_INTERVAL_MINUTES=60
-      - NMAP_ARGS=-Pn -T3 --top-1000-ports -sS -sV
+      - SCAN_NMAP_INTERVAL_MINUTES=10
+      - NMAP_ARGS=-Pn -T3 --top-ports 1000 -sT -sV
     volumes:
       - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

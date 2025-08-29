@@ -75,8 +75,11 @@ A lightweight IP Address Management tool with live ICMP status and hourly **Nmap
 
   * `DATABASE_URL=sqlite:///./ipam.db`
   * `SCAN_ICMP_INTERVAL_SECONDS=60`
-  * `SCAN_NMAP_INTERVAL_MINUTES=60`
-  * `NMAP_ARGS="-Pn -T3 --top-1000-ports -sS -sV"`
+  * `SCAN_NMAP_INTERVAL_MINUTES=10`
+  * `SCAN_SWEEP_INTERVAL_MINUTES=5`
+  * `PING_WORKERS=64`
+  * `ENABLE_NMAP_SCHEDULER=1` (default on; set to 0 to disable)
+  * `NMAP_ARGS="-Pn -T3 --top-ports 1000 -sT -sV"` (use `-sS` only if running as root)
   * `PTR_LOOKUP_ENABLED=true`
 * APScheduler jobs registered at startup; persisted next-run times optional via SQLite.
 
@@ -104,10 +107,37 @@ pip install -r requirements.txt
 uvicorn backend.main:app --reload
 ```
 
-Or with Docker:
+Or with Docker (Postgres):
 
 ```bash
 docker-compose up --build
 ```
 
 Default credentials: `admin` / `admin` (override with `ADMIN_PASSWORD`).
+
+Notes:
+
+- Docker compose grants `NET_RAW` capability to allow ICMP (ping3) without running as privileged. If you remove this, live pings will always show Unknown/Down.
+- The image installs the `nmap` binary so hourly port scans can run. Disable scheduler with `DISABLE_SCHEDULER=1` for local dev.
+- Added a Subnets table to the dashboard so adding a CIDR is immediately visible, with server-side CIDR validation and deduplication.
+- Database now runs on Postgres in Docker. The app will auto-create tables at startup. For local dev without Docker, set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname`.
+
+## CI/CD (Gitea Actions)
+
+This repo includes a Gitea Actions pipeline at `.gitea/workflows/ci.yml` that:
+
+- Runs Python tests on every push/PR
+- Builds a Docker image on runners labeled `infra` (no push by default)
+
+Runner requirements:
+
+- Runner labeled: `infra`
+- Docker engine (with Buildx) available to the runner
+
+To push to a registry, you can extend the workflow with a login/push step or create a release workflow tailored to your public registry (Docker Hub, GHCR, or Gitea registry).
+
+Environment defaults (can be overridden in Actions or deployment):
+
+- `ENABLE_NMAP_SCHEDULER=1` (automatic port scans enabled)
+- `SCAN_NMAP_INTERVAL_MINUTES=10`
+- `NMAP_ARGS="-Pn -T3 --top-ports 1000 -sT -sV"`
