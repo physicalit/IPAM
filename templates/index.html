@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Hosts</h2>
+<table class="table table-striped">
+  <thead>
+    <tr><th>IP</th><th>Hostname</th><th>Status</th><th>Latency ms</th></tr>
+  </thead>
+  <tbody>
+  {% for host in hosts %}
+    {% set last = host.statuses[0] if host.statuses else None %}
+    <tr>
+      <td>{{ host.ip }}</td>
+      <td>{{ host.hostname or '' }}</td>
+      <td>
+        {% if last %}
+          {% if last.is_up %}
+            <span class="badge bg-success">Up</span>
+          {% else %}
+            <span class="badge bg-danger">Down</span>
+          {% endif %}
+        {% else %}
+          <span class="badge bg-secondary">Unknown</span>
+        {% endif %}
+      </td>
+      <td>{{ '%.1f'|format(last.latency_ms) if last and last.latency_ms else '' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h3>Add Host</h3>
+<form method="post" action="/hosts">
+  <div class="row g-2">
+    <div class="col-auto"><input class="form-control" name="ip" placeholder="IP"></div>
+    <div class="col-auto"><button class="btn btn-primary" type="submit">Add</button></div>
+  </div>
+</form>
+<h3 class="mt-4">Add Subnet</h3>
+<form method="post" action="/subnets">
+  <div class="row g-2">
+    <div class="col-auto"><input class="form-control" name="cidr" placeholder="CIDR"></div>
+    <div class="col-auto"><input class="form-control" name="name" placeholder="Name"></div>
+    <div class="col-auto"><button class="btn btn-secondary" type="submit">Add</button></div>
+  </div>
+</form>
+{% endblock %}

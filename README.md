@@ -94,3 +94,20 @@ A lightweight IP Address Management tool with live ICMP status and hourly **Nmap
 * CSV/phpIPAM import
 * SNMP `sysName` fallback for hostname (per-host toggle)
 * Simple webhooks on down/up (POST only)
+
+## Quickstart
+
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
+
+Or with Docker:
+
+```bash
+docker-compose up --build
+```
+
+Default credentials: `admin` / `admin` (override with `ADMIN_PASSWORD`).
