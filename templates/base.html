@@ -3,15 +3,80 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/styles.css" rel="stylesheet">
     <title>{{ title if title else 'IPAM' }}</title>
   </head>
   <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <nav class="navbar navbar-expand-lg app-navbar sticky-top mb-4">
       <div class="container-fluid">
-        <a class="navbar-brand" href="/">IPAM</a>
-        <div class="collapse navbar-collapse">
-          <ul class="navbar-nav ms-auto">
+        <a class="navbar-brand d-flex align-items-center" href="/" title="IPAM">
+          <img src="/static/smaller_light_horizontal.png" alt="IPAM" class="brand-logo logo-light">
+          <img src="/static/smaller_dark_horizontal.png" alt="IPAM" class="brand-logo logo-dark">
+        </a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsMain" aria-controls="navbarsMain" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="navbarsMain">
+          <ul class="navbar-nav ms-auto align-items-center">
+            {% set statuses = job_status() %}
+            {% set _tooltip %}
+              {% for s in statuses %}
+                <div><strong>{{ s.name }}</strong>: {{ s.last_run or '-' }} {% if s.success is not none %}{% if s.success %}✓{% else %}✗{% endif %}{% endif %}{% if s.meta %} · {{ s.meta }}{% endif %}</div>
+              {% endfor %}
+            {% endset %}
+            <li class="nav-item me-2">
+              {% if scheduler_enabled %}
+                <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle" data-bs-toggle="tooltip" data-bs-html="true" title="{{ _tooltip|safe }}">Jobs ON</span>
+              {% else %}
+                <span class="badge bg-secondary" data-bs-toggle="tooltip" data-bs-html="true" title="{{ _tooltip|safe }}">Jobs OFF</span>
+              {% endif %}
+            </li>
+            <li class="nav-item me-2">
+              <button id="themeToggle" class="btn btn-sm btn-outline-light" title="Toggle theme" aria-label="Toggle theme">
+                <svg id="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/><path d="M8 0a.5.5 0 0 1 .5.5V2a.5.5 0 0 1-1 0V.5A.5.5 0 0 1 8 0zm0 14a.5.5 0 0 1 .5.5V16a.5.5 0 0 1-1 0v-1.5a.5.5 0 0 1 .5-.5zM16 8a.5.5 0 0 1-.5.5H14a.5.5 0 0 1 0-1h1.5A.5.5 0 0 1 16 8zM2 .5a.5.5 0 0 1 .5.5v0A.5.5 0 0 1 2 .5zM2 8a.5.5 0 0 1-.5.5H0a.5.5 0 1 1 0-1h1.5A.5.5 0 0 1 2 8zm11.657-5.657a.5.5 0 0 1 .707.707l-1.06 1.06a.5.5 0 1 1-.707-.707l1.06-1.06zM3.403 12.596a.5.5 0 0 1 .707.707l-1.06 1.06a.5.5 0 1 1-.707-.707l1.06-1.06zm9.193 1.767a.5.5 0 0 1-.707-.707l1.06-1.06a.5.5 0 1 1 .707.707l-1.06 1.06zM3.403 3.404a.5.5 0 1 1-.707-.707L3.756 1.636a.5.5 0 1 1 .707.707L3.403 3.404z"/></svg>
+                <svg id="icon-moon" class="d-none" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.02 3.278 7.277 7.318 7.277.74 0 1.459-.105 2.137-.303a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.12.06A.752.752 0 0 1 6 .278z"/></svg>
+              </button>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/netflow">NetFlow</a></li>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="dataMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">Data</a>
+              <div class="dropdown-menu dropdown-menu-end p-3 shadow-lg" aria-labelledby="dataMenu" style="min-width: 420px;">
+                <div class="mb-2"><strong>Export</strong></div>
+                <div class="d-flex gap-2 mb-3">
+                  <a class="btn btn-sm btn-outline-primary flex-fill" href="/export/subnets">Subnets CSV</a>
+                  <a class="btn btn-sm btn-outline-primary flex-fill" href="/export/hosts">Hosts CSV</a>
+                </div>
+                <div class="mb-2"><strong>Import</strong></div>
+                <div class="row g-3">
+                  <div class="col-12">
+                    <form class="row g-2 align-items-end" method="post" action="/import/subnets" enctype="multipart/form-data">
+                      <div class="col-8">
+                        <label class="form-label form-label-sm">Subnets CSV</label>
+                        <input class="form-control form-control-sm" type="file" name="file" accept=".csv" required>
+                      </div>
+                      <div class="col-4 d-grid">
+                        <button class="btn btn-sm btn-outline-info" type="submit">Import</button>
+                      </div>
+                    </form>
+                  </div>
+                  <div class="col-12">
+                    <form class="row g-2 align-items-end" method="post" action="/import/hosts" enctype="multipart/form-data">
+                      <div class="col-8">
+                        <label class="form-label form-label-sm">Hosts CSV</label>
+                        <input class="form-control form-control-sm" type="file" name="file" accept=".csv" required>
+                      </div>
+                      <div class="col-4 d-grid">
+                        <button class="btn btn-sm btn-outline-info" type="submit">Import</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            </li>
             <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
           </ul>
         </div>
@@ -20,7 +85,16 @@
     <div class="container">
       {% block content %}{% endblock %}
     </div>
+    <footer class="site-footer mt-4">
+      <div class="container d-flex flex-column flex-md-row align-items-center justify-content-between py-3">
+        <div class="small text-muted">© {{ 2025 }} IPAM · All rights reserved</div>
+        <div class="small text-muted">
+          Tips: drag, mouse wheel, or hover edges to scroll tabs.
+        </div>
+      </div>
+    </footer>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/main.js"></script>
+    {% block scripts %}{% endblock %}
   </body>
 </html>

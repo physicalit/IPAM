@@ -9,7 +9,7 @@ A lightweight IP Address Management tool with live ICMP status and hourly **Nmap
 * **Backend:** Python **FastAPI** (REST + server-rendered pages via Jinja2)
 * **DB:** **SQLite** (via SQLAlchemy)
 * **Jobs/Scheduling:** **APScheduler** in-process (no Redis/Celery)
-* **Scanning:** `icmplib` (or `ping3`) for ICMP; **Nmap** via `python-nmap` (or subprocess)
+* **Scanning:** `ping3` for ICMP; **Nmap** via `python-nmap` (or subprocess)
 * **UI:** **Bootstrap 5** (or Foundation) + small vanilla JS; optional inline SVG for tiny charts
 * **Auth:** Simple session (Starlette sessions) + password hash (bcrypt)
 
@@ -52,7 +52,8 @@ A lightweight IP Address Management tool with live ICMP status and hourly **Nmap
    * Auto OpenAPI docs at `/docs`.
 7. **Security**
 
-   * Login page, sessions, CSRF, rate limit on manual scan triggers.
+   * Login page and sessions.
+   * Note: CSRF protection and rate limiting are planned but not implemented yet.
 
 ## Scanning Behavior
 
@@ -73,7 +74,7 @@ A lightweight IP Address Management tool with live ICMP status and hourly **Nmap
 
 * `.env`:
 
-  * `DATABASE_URL=sqlite:///./ipam.db`
+  * `DATABASE_URL=postgresql+psycopg2://user:password@db-host:5432/ipam` (or `sqlite:///./ipam.db`)
   * `SCAN_ICMP_INTERVAL_SECONDS=60`
   * `SCAN_NMAP_INTERVAL_MINUTES=10`
   * `SCAN_SWEEP_INTERVAL_MINUTES=5`
@@ -115,6 +116,8 @@ docker-compose up --build
 
 Default credentials: `admin` / `admin` (override with `ADMIN_PASSWORD`).
 
+If you create a `.env`, the app will auto-load it locally. Docker Compose defaults to the bundled Postgres service if `DATABASE_URL` is not set. To point at a remote DB, set `DATABASE_URL` in `.env` or your environment before `docker-compose up`.
+
 Notes:
 
 - Docker compose grants `NET_RAW` capability to allow ICMP (ping3) without running as privileged. If you remove this, live pings will always show Unknown/Down.
@@ -141,3 +144,42 @@ Environment defaults (can be overridden in Actions or deployment):
 - `ENABLE_NMAP_SCHEDULER=1` (automatic port scans enabled)
 - `SCAN_NMAP_INTERVAL_MINUTES=10`
 - `NMAP_ARGS="-Pn -T3 --top-ports 1000 -sT -sV"`
+
+## NetFlow Collector
+
+The stack includes a NetFlow v9 collector that listens on UDP/2055, parses exporter templates, and persists flows into Postgres (`netflow_flows`). The `/netflow` page uses these rows to render subnet-to-subnet maps and top talkers. You can enable short hex dumps for debugging template/data sets.
+
+Run with Docker Compose:
+
+```bash
+docker-compose up --build collector
+```
+
+This starts a UDP listener on `0.0.0.0:2055/udp` that logs lines like:
+
+```
+pkt exporter=192.168.88.1 v=9 len=1392 count=24 seq=247 srcid=0 sets=256,256,...
+```
+
+Tuning via environment variables (service `collector` in `docker-compose.yml`):
+
+- `NETFLOW_BIND_HOST` default `0.0.0.0`
+- `NETFLOW_BIND_PORT` default `2055`
+- `LOG_LEVEL=DEBUG` to see all lines
+- `DUMP_HEX=1` to include a short hex dump, `DUMP_HEX_LEN` to adjust bytes
+- `NETFLOW_LOG_FILE=/path/to/collector.log` to also write a full, untruncated log to a file. When set, hex dumps are written twice: a short one to the console and a full one to the file.
+- `NETFLOW_INSERT_BATCH` batch size for inserts (default 200)
+- `NETFLOW_FLUSH_INTERVAL_MS` time-based flush for low volume (default 1000)
+
+Notes:
+
+- The collector creates `netflow_flows` on first run. On Postgres, the schema uses `inet` and `timestamptz`; SQLite fallback is available for dev only (the `/netflow` page requires Postgres).
+- Timestamps are derived from `LAST_SWITCHED` (ms since boot) + exporter header. If missing, export time is used.
+- The `/netflow` page aggregates internal↔internal and also internal↔External edges so you can see per-subnet Internet traffic.
+
+Quick sanity checks:
+
+```bash
+docker compose exec db psql -U ipam -d ipam -c "select count(*) as rows, min(ts) as oldest, max(ts) as newest from netflow_flows;"
+docker compose logs -f collector | rg "inserted|pkt exporter"
+```

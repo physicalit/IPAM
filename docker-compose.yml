@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   db:
     image: postgres:16-alpine
@@ -21,10 +20,30 @@ services:
     cap_add:
       - NET_RAW
     environment:
-      - DATABASE_URL=postgresql+psycopg2://ipam:ipam@db:5432/ipam
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://ipam:ipam@db:5432/ipam}
       - SCAN_ICMP_INTERVAL_SECONDS=60
       - SCAN_NMAP_INTERVAL_MINUTES=10
       - NMAP_ARGS=-Pn -T3 --top-ports 1000 -sT -sV
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+
+  collector:
+    build: .
+    # NetFlow v9 collector (persists flows into Postgres)
+    command: python -m backend.netflow_collector
+    ports:
+      - "2055:2055/udp"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://ipam:ipam@db:5432/ipam}
+      - NETFLOW_BIND_HOST=0.0.0.0
+      - NETFLOW_BIND_PORT=2055
+      - LOG_LEVEL=DEBUG
+      - DUMP_HEX=1
+      - DUMP_HEX_LEN=128
+      - NETFLOW_INSERT_BATCH=250
     volumes:
       - .:/app
     depends_on:

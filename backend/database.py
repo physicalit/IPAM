@@ -1,8 +1,20 @@
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import OperationalError
 import time
+import logging
+
+logger = logging.getLogger("ipam.db")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    logger.addHandler(_handler)
+logger.setLevel(logging.getLevelName(os.environ.get("LOG_LEVEL", "INFO").upper()))
+
+# Load environment variables from a local .env file if present
+load_dotenv(dotenv_path=os.environ.get("ENV_FILE", ".env"), override=False)
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./ipam.db")
 
@@ -52,5 +64,5 @@ def commit_with_retry(db, attempts: int = 6, sleep: float = 0.2):
     try:
         db.rollback()
     except Exception:
-        pass
+        logger.exception("commit_with_retry: rollback failed after OperationalError")
     return False

@@ -1,14 +1,20 @@
+import os
 from fastapi import APIRouter, Depends, Request, Form, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 import bcrypt
 
-from .database import get_db
+from .database import get_db, engine
 from . import models
+from .tasks import job_status_snapshot
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
+# Align template globals with main app for navbar status
+templates.env.globals["scheduler_enabled"] = (os.environ.get("DISABLE_SCHEDULER") != "1")
+templates.env.globals["netflow_enabled"] = str(engine.dialect.name).startswith("postgres")
+templates.env.globals["job_status"] = job_status_snapshot
 
 
 @router.get("/login")

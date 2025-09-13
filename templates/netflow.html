@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">NetFlow Analysis</h3>
+  <div class="d-flex align-items-center gap-2">
+    <form class="d-flex align-items-center" method="get" action="/netflow">
+      <label class="me-2">Last</label>
+      <input type="number" min="1" max="1440" step="1" class="form-control form-control-sm me-2" name="minutes" value="{{ minutes }}" style="width: 100px;">
+      <span class="me-3">minutes</span>
+      <button class="btn btn-sm btn-outline-primary" type="submit">Update</button>
+    </form>
+    <div class="d-flex align-items-center ms-3">
+      <label for="js-filter-role-global" class="me-2">Interface</label>
+      <select id="js-filter-role-global" class="form-select form-select-sm" style="width: auto;">
+        <option value="all" selected>All</option>
+        <option value="lan">LAN only</option>
+        <option value="wan">WAN only</option>
+      </select>
+    </div>
+    <form method="post" action="/netflow/clear" onsubmit="return confirm('Clear all NetFlow data?');">
+      <button class="btn btn-sm btn-outline-danger" type="submit" title="Clear NetFlow table">Clear NetFlow Data</button>
+    </form>
+  </div>
+  </div>
+
+{% if error %}
+  <div class="alert alert-warning">{{ error }}</div>
+{% endif %}
+
+{% if edges and edges|length > 0 %}
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header">Subnet-to-Subnet Map (top flows)</div>
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-2">
+        {% for e in edges %}
+          <div class="badge bg-info-subtle text-info-emphasis border border-info-subtle p-2">
+            <span class="fw-semibold">{{ e.src_name or e.src_cidr }}</span>
+            <span class="mx-1">→</span>
+            <span class="fw-semibold">{{ e.dst_name or e.dst_cidr }}</span>
+            <span class="ms-2 text-muted">{{ human_bytes(e.bytes) }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if scanners and scanners|length > 0 %}
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header">Scanners (ICMP/ICMPv6)</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-lg-6">
+          <h6 class="mb-2">Initiators (internal → remote)</h6>
+          <ul class="list-unstyled mb-0 striped-list">
+            {% for s in (scanners[:10] if scanners else []) %}
+              <li>
+                <div class="fw-semibold">{{ s.hostname or s.ip }}{% if s.hostname and s.ip %}<span class="text-muted ms-2">({{ s.ip }})</span>{% endif %}</div>
+                <div class="small text-muted mb-1">in {{ s.subnet_name }} ({{ s.subnet_cidr }}) · {{ s.peers }} peers · {{ s.flows }} flows · {{ human_bytes(s.bytes) }}</div>
+                {% set peers = (scan_pairs and scan_pairs.get('initiators', {}).get(s.ip)) or [] %}
+                {% if peers and peers|length > 0 %}
+                  {% set top = peers[:3] %}
+                  <div class="small">
+                    {% for p in top %}
+                      {% set name = p.remote_hostname or (p.remote_subnet_name if p.remote_subnet_name else (p.remote_rdns if p.remote_rdns else p.remote_ip)) %}
+                      <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle me-1">{{ name }} responded</span>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="col-12 col-lg-6">
+          <h6 class="mb-2">Responders (remote → internal)</h6>
+          <ul class="list-unstyled mb-0 striped-list">
+            {% for h in (responded_hosts[:10] if responded_hosts else []) %}
+              <li>
+                <div class="fw-semibold">{{ h.local_hostname or h.local_ip }}{% if h.local_hostname and h.local_ip %}<span class="text-muted ms-2">({{ h.local_ip }})</span>{% endif %}</div>
+                <div class="small text-muted mb-1">Scanned by {{ h.peers|length }} sources · {{ h.total_flows }} flows · {{ human_bytes(h.total_bytes) }}</div>
+                {% set top = h.peers[:8] %}
+                <div class="small">
+                  {% for p in top %}
+                    <span class="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle me-1">{{ p.name }} · {{ human_bytes(p.bytes) }}</span>
+                  {% endfor %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% for entry in subnets %}
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div>
+        <strong>{{ entry.subnet.name }}</strong>
+        <span class="text-muted ms-2">{{ entry.subnet.cidr }}</span>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <div class="small text-muted me-2">Top peers ({{ minutes }}m)</div>
+        <div class="d-flex align-items-center gap-2 js-netflow-filters" data-subnet-id="{{ entry.subnet.id }}">
+          <label class="form-label form-label-sm mb-0">Protocol</label>
+          <select class="form-select form-select-sm js-filter-proto" style="width: auto;">
+            <option value="all" selected>All</option>
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="icmp">ICMP</option>
+            <option value="icmpv6">ICMPv6</option>
+            <option value="gre">GRE</option>
+            <option value="other">Other</option>
+          </select>
+          <label class="form-label form-label-sm mb-0 ms-2">Peer</label>
+          <select class="form-select form-select-sm js-filter-peer" style="width: auto;">
+            <option value="all" selected>All</option>
+            <option value="internal">Internal</option>
+            <option value="external">External</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12">
+          <div class="d-flex align-items-center gap-3 mb-2">
+            <h6 class="mb-0">Conversations</h6>
+            <div class="d-flex align-items-center gap-2 js-conv-controls">
+              <label class="form-label form-label-sm mb-0">Rows</label>
+              <select class="form-select form-select-sm js-filter-dir" style="width: auto;">
+                <option value="all" selected>All</option>
+                <option value="bi">Bi-directional</option>
+                <option value="out">Out only</option>
+                <option value="in">In only</option>
+              </select>
+              <label class="form-label form-label-sm mb-0 ms-2">Focus</label>
+              <select class="form-select form-select-sm js-focus-dir" style="width: auto;">
+                <option value="both" selected>Both</option>
+                <option value="out">Outgoing</option>
+                <option value="in">Incoming</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle netflow-table js-conv-table">
+              <thead>
+                <tr>
+                  <th>Local Host</th>
+                  <th>Remote Peer</th>
+                  <th>Protocols</th>
+                  <th class="text-end col-out-bytes">Out Bytes</th>
+                  <th class="text-end col-out-pkts">Out Pkts</th>
+                  <th class="text-end col-out-flows">Out Flows</th>
+                  <th class="text-end col-in-bytes">In Bytes</th>
+                  <th class="text-end col-in-pkts">In Pkts</th>
+                  <th class="text-end col-in-flows">In Flows</th>
+                  <th class="text-end">Total</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% set conv = entry.conv_peers or [] %}
+                {% if conv and conv|length > 0 %}
+                {% for c in conv %}
+
+                <tr class="js-conv-row" data-protos="{{ (c.protos | list) | join(',') }}" data-peer="{{ 'internal' if c.remote_subnet_id else 'external' }}" data-ifrole="{{ c.ifrole or 'unknown' }}" data-has-out="{{ '1' if c.has_out else '0' }}" data-has-in="{{ '1' if c.has_in else '0' }}" data-bidi="{{ '1' if c.bidirectional else '0' }}">
+                  <td>
+                    <div class="d-flex flex-column">
+                      <div>
+                        {{ c.local_hostname or c.local_ip }}
+                        {% if c.local_hostname and c.local_ip %}<span class="text-muted ms-2">({{ c.local_ip }})</span>{% endif %}
+                      </div>
+                      <div class="small mt-1">
+                        {% if c.local_is_up is not none %}
+                          {% if c.local_is_up %}
+                            <span class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle">Up</span>
+                          {% else %}
+                            <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle">Down</span>
+                          {% endif %}
+                        {% endif %}
+                        {% if c.ifname %}
+                          {% if c.ifrole == 'wan' %}
+                            <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle ms-1">{{ c.ifname }}</span>
+                          {% elif c.ifrole == 'lan' %}
+                            <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle ms-1">{{ c.ifname }}</span>
+                          {% else %}
+                            <span class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle ms-1">{{ c.ifname }}</span>
+                          {% endif %}
+                        {% endif %}
+                        {% if c.bidirectional %}
+                          <span class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle ms-1">Bi-directional</span>
+                        {% else %}
+                          {% if c.has_out %}
+                            <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">Out only</span>
+                          {% else %}
+                            <span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle ms-1">In only</span>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div class="d-flex flex-column">
+                      <div>
+                        {{ c.remote_hostname or c.remote_rdns or c.remote_ip }}
+                        {% if (c.remote_hostname or c.remote_rdns) and c.remote_ip %}<span class="text-muted ms-2">({{ c.remote_ip }})</span>{% endif %}
+                      </div>
+                      <div class="small mt-1">
+                        {% if c.remote_subnet_name %}
+                          <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{{ c.remote_subnet_name }} ({{ c.remote_subnet_cidr }})</span>
+                        {% else %}
+                          <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis border border-warning-subtle">External</span>
+                              {#
+                          {% if c.remote_rdns %}
+                            <span class="badge rounded-pill bg-info-subtle text-info-emphasis border border-info-subtle ms-1">{{ c.remote_rdns }}</span>
+                          {% endif %}
+                          #}
+                        {% endif %}
+                        {% if c.remote_is_up is not none %}
+                          {% if c.remote_is_up %}
+                            <span class="badge rounded-pill bg-success-subtle text-success-emphasis border border-success-subtle ms-1">Up</span>
+                          {% else %}
+                            <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis border border-danger-subtle ms-1">Down</span>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    {% if c.protos and c.protos|length > 0 %}
+                      <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ c.protos | map('upper') | join(', ') }}</span>
+                    {% else %}
+                      <span class="text-muted">-</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end col-out-bytes">{{ human_bytes(c.out_bytes) }}</td>
+                  <td class="text-end col-out-pkts">{{ c.out_pkts }}</td>
+                  <td class="text-end col-out-flows">{{ c.out_flows }}</td>
+                  <td class="text-end col-in-bytes">{{ human_bytes(c.in_bytes) }}</td>
+                  <td class="text-end col-in-pkts">{{ c.in_pkts }}</td>
+                  <td class="text-end col-in-flows">{{ c.in_flows }}</td>
+                  <td class="text-end">{{ human_bytes(c.total_bytes) }}</td>
+                  <td class="text-end">
+                    <div class="d-inline-flex gap-1">
+                      {% if c.has_out %}
+                      <a class="btn btn-sm btn-outline-secondary p-0 px-1" href="/netflow/flows/download?minutes={{ minutes }}&local={{ c.local_ip }}&remote={{ c.remote_ip }}&dir=out" title="Download outgoing flows" aria-label="Download outgoing flows">Out</a>
+                      {% endif %}
+                      {% if c.has_in %}
+                      <a class="btn btn-sm btn-outline-secondary p-0 px-1" href="/netflow/flows/download?minutes={{ minutes }}&local={{ c.local_ip }}&remote={{ c.remote_ip }}&dir=in" title="Download incoming flows" aria-label="Download incoming flows">In</a>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr><td colspan="11" class="text-muted">No data</td></tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const globalRoleSel = document.getElementById('js-filter-role-global');
+    // Scoped filtering per subnet card
+    document.querySelectorAll('.js-netflow-filters').forEach(section => {
+      const card = section.closest('.card');
+      const protoSel = section.querySelector('.js-filter-proto');
+      const peerSel = section.querySelector('.js-filter-peer');
+      const dirSel = card.querySelector('.js-filter-dir');
+      const focusSel = card.querySelector('.js-focus-dir');
+      const convTable = card.querySelector('table.js-conv-table');
+      function applyFilter() {
+        const proto = (protoSel && protoSel.value) ? protoSel.value : 'all';
+        const peer = (peerSel && peerSel.value) ? peerSel.value : 'all';
+        const role = (globalRoleSel && globalRoleSel.value) ? globalRoleSel.value : 'all';
+        const dir = (dirSel && dirSel.value) ? dirSel.value : 'all';
+        const rows = card ? card.querySelectorAll('tr.js-conv-row') : [];
+        rows.forEach(tr => {
+          const protosStr = (tr.getAttribute('data-protos') || '').toLowerCase();
+          const peerType = (tr.getAttribute('data-peer') || 'external').toLowerCase();
+          const ifrole = (tr.getAttribute('data-ifrole') || 'unknown').toLowerCase();
+          const hasOut = tr.getAttribute('data-has-out') === '1';
+          const hasIn = tr.getAttribute('data-has-in') === '1';
+          const protos = protosStr ? protosStr.split(',').filter(Boolean) : [];
+          let protoOk = true;
+          if (proto !== 'all') {
+            if (proto === 'other') {
+              const known = ['tcp','udp','icmp','icmpv6','gre'];
+              protoOk = protos.length === 0 || protos.every(p => !known.includes(p));
+            } else {
+              protoOk = protos.includes(proto);
+            }
+          }
+          const peerOk = (peer === 'all') || (peerType === peer);
+          const roleOk = (role === 'all') || (ifrole === role);
+          let dirOk = true;
+          if (dir === 'bi') dirOk = hasOut && hasIn;
+          else if (dir === 'out') dirOk = hasOut && !hasIn;
+          else if (dir === 'in') dirOk = hasIn && !hasOut;
+          tr.style.display = (protoOk && peerOk && roleOk && dirOk) ? '' : 'none';
+        });
+        // apply focus highlighting
+        if (convTable && focusSel) {
+          convTable.classList.remove('focus-out', 'focus-in');
+          if (focusSel.value === 'out') convTable.classList.add('focus-out');
+          else if (focusSel.value === 'in') convTable.classList.add('focus-in');
+        }
+      }
+      if (protoSel) protoSel.addEventListener('change', applyFilter);
+      if (peerSel) peerSel.addEventListener('change', applyFilter);
+      if (dirSel) dirSel.addEventListener('change', applyFilter);
+      if (focusSel) focusSel.addEventListener('change', applyFilter);
+      applyFilter();
+      if (globalRoleSel) globalRoleSel.addEventListener('change', applyFilter);
+    });
+
+    // Equalize row heights between outgoing and incoming tables per subnet card
+    // No row height sync needed for single table layout
+  });
+  </script>
+{% endblock %}

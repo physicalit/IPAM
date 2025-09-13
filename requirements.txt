@@ -7,6 +7,6 @@ bcrypt
 python-nmap
 ping3
 python-multipart
-httpx
-itsdangerous
+python-dotenv
 psycopg2-binary
+itsdangerous
